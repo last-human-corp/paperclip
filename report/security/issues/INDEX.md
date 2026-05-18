@@ -16,7 +16,7 @@ mirrors the production code path; **📄 Static-only** = source-grep evidence.
 
 | ID | File | Title | Pen-test status |
 |---|---|---|---|
-| H-1 | [`high-H1-ssrf-http-adapter.md`](high-H1-ssrf-http-adapter.md) | Outbound SSRF in HTTP adapter — no private-IP/DNS guard | 🔥 Confirmed live |
+| H-1 | [`high-H1-ssrf-http-adapter.md`](high-H1-ssrf-http-adapter.md) | Outbound SSRF in HTTP adapter — no private-IP/DNS guard | 🔥 Confirmed live (full chain) |
 | H-2 | [`high-H2-gh-actions-shell-injection.md`](high-H2-gh-actions-shell-injection.md) | GitHub Actions `run:` shell-injection (3 sites) | 📄 Static-only · severity reduced to Medium for these sites |
 | H-3 | [`high-H3-board-claim-in-memory-state.md`](high-H3-board-claim-in-memory-state.md) | Board-claim challenge stored in process memory only | 📄 Static-only |
 | H-4 | [`high-H4-zoderror-schema-disclosure.md`](high-H4-zoderror-schema-disclosure.md) | ZodError details returned to client (schema disclosure) | 🔥 Confirmed live |
@@ -24,7 +24,8 @@ mirrors the production code path; **📄 Static-only** = source-grep evidence.
 | H-6 | [`high-H6-cloud-tenant-auto-admin.md`](high-H6-cloud-tenant-auto-admin.md) | Cloud-tenant header auto-grants admin without email verification | 📄 Static-only |
 | H-7 | [`high-H7-agent-jwt-not-revocable.md`](high-H7-agent-jwt-not-revocable.md) | Agent JWTs are not revocable (48 h TTL, no jti) | 🔥 Confirmed live (chained with C-1) |
 | H-8 | [`high-H8-dns-rebinding-gap.md`](high-H8-dns-rebinding-gap.md) | `private-hostname-guard` does not resolve DNS or normalise IPs | 🧪 Demonstrated |
-| H-9 | [`high-H9-dompurify-xss-bypass-chain.md`](high-H9-dompurify-xss-bypass-chain.md) | SVG asset sanitiser uses DOMPurify 3.3.2 | 📄 Static-only |
+| H-9 | [`high-H9-dompurify-xss-bypass-chain.md`](high-H9-dompurify-xss-bypass-chain.md) | SVG asset sanitiser uses DOMPurify 3.3.2 | 📄 Static-only · live exploitation blocked by defence-in-depth |
+| H-10 | [`high-H10-http-adapter-workspace-leak.md`](high-H10-http-adapter-workspace-leak.md) | HTTP-adapter POST body leaks workspace paths and lease IDs | 🔥 Confirmed live |
 
 ## Medium
 
