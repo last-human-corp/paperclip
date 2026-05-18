@@ -1,0 +1,157 @@
+{ lib
+, stdenv
+, nodejs_20
+, pnpm_9
+, makeWrapper
+, cacert
+, # runtime PATH deps (kept in sync with Dockerfile)
+  git
+, gh
+, ripgrep
+, openssh
+, jq
+, python3
+, coreutils
+, bash
+, curl
+, wget
+, tailscale
+}:
+
+let
+  # Pin to the exact pnpm major declared in package.json (packageManager: pnpm@9.x).
+  pnpm = pnpm_9;
+
+  src = lib.cleanSourceWith {
+    src = ../.;
+    filter = path: type:
+      let
+        base = baseNameOf path;
+        rel = lib.removePrefix (toString ../. + "/") (toString path);
+      in
+      # Exclude obviously-large/irrelevant trees up front so the source closure
+      # stays small. Build artefacts (dist/, *.tsbuildinfo, etc.) are also
+      # excluded — pnpm + the workspace builds regenerate them.
+      !(
+        base == "node_modules"
+        || base == "result"
+        || base == ".git"
+        || base == ".github"
+        || base == "data"
+        || base == ".paperclip"
+        || base == ".paperclip-local"
+        || base == ".pnpm-store"
+        || base == "coverage"
+        || base == "dist"
+        || base == "storybook-static"
+        || base == ".DS_Store"
+        || base == "nix"
+        || base == "flake.nix"
+        || base == "flake.lock"
+        || lib.hasSuffix ".tsbuildinfo" base
+      );
+  };
+
+  meta = with lib; {
+    description = "Open-source orchestration for zero-human AI companies";
+    homepage = "https://github.com/paperclipai/paperclip";
+    license = licenses.mit;
+    platforms = [ "x86_64-linux" "aarch64-linux" ];
+    mainProgram = "paperclip";
+  };
+
+in
+stdenv.mkDerivation (finalAttrs: {
+  pname = "paperclip";
+  # Pinning the version is intentional: bump it in a single place when the
+  # workspace root package.json gains a version, or on release tags.
+  version = "0-unstable";
+
+  inherit src;
+
+  nativeBuildInputs = [
+    nodejs_20
+    pnpm.configHook
+    makeWrapper
+    cacert
+    python3 # node-gyp for any native module rebuilds
+  ];
+
+  # Native modules (better-sqlite3, sharp, etc.) may need a real C toolchain
+  # at install time. stdenv already provides gcc/make.
+  buildInputs = [ ];
+
+  # pnpm.configHook does the heavy lifting:
+  #   - resolves dependencies from `pnpmDeps` (offline fetch below)
+  #   - honours `pnpm.patchedDependencies` and `pnpm.overrides` in package.json
+  #   - runs lifecycle scripts for native modules
+  pnpmDeps = pnpm.fetchDeps {
+    inherit (finalAttrs) pname version src;
+    # Initial placeholder hash — run `nix build` once and replace with the
+    # hash printed in the build failure. Re-run after any pnpm-lock.yaml
+    # change.
+    hash = lib.fakeHash;
+  };
+
+  # The workspace declares pnpm@9.15.4 via packageManager; corepack would
+  # normally enforce that. In Nix we use the pinned pnpm derivation
+  # directly, so disable corepack's strict check.
+  COREPACK_ENABLE_STRICT = "0";
+
+  # Mirror the Dockerfile build sequence (Dockerfile:46-49). Build order
+  # matters: ui first (consumed by server's static assets), then plugin-sdk
+  # (used by adapters), then server (the runtime entry point).
+  buildPhase = ''
+    runHook preBuild
+
+    export HOME=$TMPDIR
+    pnpm --filter @paperclipai/ui build
+    pnpm --filter @paperclipai/plugin-sdk build
+    pnpm --filter @paperclipai/server build
+
+    test -f server/dist/index.js \
+      || (echo "ERROR: server build output missing" >&2; exit 1)
+
+    runHook postBuild
+  '';
+
+  installPhase = ''
+    runHook preInstall
+
+    mkdir -p $out/lib/paperclip
+    # Copy the entire workspace; node_modules contain native prebuilds and
+    # workspace symlinks that must be preserved as-is.
+    cp -r --reflink=auto . $out/lib/paperclip/
+
+    # Wrapper mirrors the Dockerfile CMD (Dockerfile:88-89). PATH carries
+    # every external binary the server may exec at runtime.
+    mkdir -p $out/bin
+    makeWrapper ${nodejs_20}/bin/node $out/bin/paperclip \
+      --add-flags "--import" \
+      --add-flags "$out/lib/paperclip/server/node_modules/tsx/dist/loader.mjs" \
+      --add-flags "$out/lib/paperclip/server/dist/index.js" \
+      --prefix PATH : ${lib.makeBinPath [
+        nodejs_20
+        git
+        gh
+        ripgrep
+        openssh
+        jq
+        python3
+        coreutils
+        bash
+        curl
+        wget
+        tailscale
+      ]} \
+      --set NODE_ENV production
+
+    runHook postInstall
+  '';
+
+  # The server build re-runs typecheck implicitly; skip the heavy test
+  # suite at package-build time. CI runs it separately.
+  doCheck = false;
+
+  inherit meta;
+})

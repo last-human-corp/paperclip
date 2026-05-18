@@ -310,6 +310,17 @@ This starts the API server at `http://localhost:3100`. An embedded PostgreSQL da
 
 > **Requirements:** Node.js 20+, pnpm 9.15+
 
+### Nix / NixOS
+
+```bash
+nix run github:paperclipai/paperclip#paperclip      # one-shot run
+nix develop github:paperclipai/paperclip            # dev shell
+```
+
+NixOS users can enable the service via `services.paperclip` exported from
+`nixosModules.paperclip`. See [`doc/NIX.md`](doc/NIX.md) for full module
+options, dev shell usage, and the VM test.
+
 <br/>
 
 ## FAQ

@@ -46,6 +46,10 @@ diagnostics/
 /.idea/
 /.agents/
 
+# Nix build outputs
+result
+result-*
+
 # Doc maintenance cursor
 .doc-review-cursor
 
