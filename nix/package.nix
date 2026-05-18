@@ -1,7 +1,7 @@
 { lib
 , stdenv
 , nodejs_20
-, pnpm_9
+, pnpm
 , makeWrapper
 , cacert
 , # runtime PATH deps (kept in sync with Dockerfile)
@@ -19,8 +19,10 @@
 }:
 
 let
-  # Pin to the exact pnpm major declared in package.json (packageManager: pnpm@9.x).
-  pnpm = pnpm_9;
+  # `pkgs.pnpm` tracks the current pnpm major in nixpkgs. The workspace
+  # declares `packageManager: pnpm@9.15.4`; pnpm 9 and 10 are both compatible
+  # with this lockfile format. If a future nixpkgs bump breaks the build,
+  # pin to `pkgs.pnpm_9` explicitly in an override.
 
   src = lib.cleanSourceWith {
     src = ../.;

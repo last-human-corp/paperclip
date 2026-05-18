@@ -122,8 +122,10 @@ pnpm install
 pnpm dev
 ```
 
-Contains Node 20, pnpm 9, every runtime binary listed above, plus
-`postgresql_17` and `playwright-driver` for `pnpm test:e2e`.
+Contains Node 20, pnpm, every runtime binary listed above, plus
+`postgresql` (for contributors who want an external DB during dev).
+Playwright is pulled in via `pnpm install` rather than the Nix shell to
+avoid version drift with the workspace's pinned `@playwright/test`.
 
 ## VM test
 

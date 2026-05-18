@@ -1,6 +1,6 @@
 { mkShell
 , nodejs_20
-, pnpm_9
+, pnpm
 , git
 , gh
 , ripgrep
@@ -10,8 +10,7 @@
 , curl
 , wget
 , tailscale
-, postgresql_17
-, playwright-driver
+, postgresql
 }:
 
 # Dev shell parity with the Dockerfile's base image so that `pnpm dev`,
@@ -22,7 +21,7 @@ mkShell {
 
   packages = [
     nodejs_20
-    pnpm_9
+    pnpm
 
     # Runtime binaries exec'd by the server and agent CLIs
     git
@@ -36,15 +35,10 @@ mkShell {
     tailscale
 
     # Useful for local Postgres if the contributor opts out of embedded mode
-    postgresql_17
-
-    # Playwright E2E tests
-    playwright-driver
+    postgresql
   ];
 
   shellHook = ''
-    export PLAYWRIGHT_BROWSERS_PATH=${playwright-driver.browsers}
-    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     echo "paperclip dev shell ready — node $(node --version), pnpm $(pnpm --version)"
   '';
 }

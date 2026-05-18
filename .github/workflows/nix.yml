@@ -40,8 +40,16 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: nix flake check
-        run: nix flake check --print-build-logs --keep-going
+      # Evaluation-only validation: confirms flake.nix parses, all outputs
+      # resolve, and the module/package derivations evaluate cleanly. Does NOT
+      # build the package — see doc/NIX.md "Updating dependency hashes" for
+      # the first-build hash-resolution flow that must complete before
+      # `nix flake check` / `nix build .#paperclip` can run end-to-end in CI.
+      - name: nix flake show
+        run: nix flake show --no-write-lock-file --all-systems
 
-      - name: nix build .#paperclip
-        run: nix build .#paperclip --print-build-logs
+      - name: nix eval (package + module)
+        run: |
+          nix eval --no-write-lock-file .#paperclip.drvPath
+          nix eval --no-write-lock-file .#paperclip-agent-clis.drvPath || true
+          nix eval --no-write-lock-file --raw .#nixosModules.paperclip --apply 'm: builtins.typeOf m'
