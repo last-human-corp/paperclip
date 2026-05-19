@@ -6,13 +6,16 @@
 , pnpmConfigHook
 , makeWrapper
 , cacert
+, # node-gyp@8 (bundled in node 20 ecosystem) imports `distutils`, which
+  # Python 3.12+ removed. Use a Python with setuptools, which ships a
+  # `distutils` compatibility shim.
+  python3
 , # runtime PATH deps (kept in sync with Dockerfile)
   git
 , gh
 , ripgrep
 , openssh
 , jq
-, python3
 , coreutils
 , bash
 , curl
@@ -107,6 +110,17 @@ stdenv.mkDerivation (finalAttrs: {
   # directly, so disable corepack's strict check.
   COREPACK_ENABLE_STRICT = "0";
 
+  # Point node-gyp at the Node.js header tarball bundled with nodejs_20.
+  # Without this, node-gyp tries to fetch from nodejs.org during build —
+  # impossible inside the Nix sandbox.
+  npm_config_nodedir = nodejs_20;
+
+  # Force node-gyp to use a Python that has setuptools (provides a
+  # `distutils` shim removed from Python 3.12+ stdlib). The bundled
+  # node-gyp@8 still imports `distutils.version` and fails otherwise.
+  npm_config_python =
+    "${python3.withPackages (ps: [ ps.setuptools ])}/bin/python";
+
   # Mirror the Dockerfile build sequence (Dockerfile:46-49). Build order
   # matters: ui first (consumed by server's static assets), then plugin-sdk
   # (used by adapters), then server (the runtime entry point).
@@ -114,27 +128,46 @@ stdenv.mkDerivation (finalAttrs: {
     runHook preBuild
 
     # pnpmConfigHook runs `pnpm install --ignore-scripts` to keep the
-    # configure phase hermetic, so native-module install hooks (sqlite3,
-    # better-sqlite3, sharp) are never executed. Without those, sqlite3's
-    # node bindings are missing and the server crashes at startup via
-    # `@cursor/sdk`. Rebuild them here from source.
+    # configure phase hermetic, so native-module install hooks are never
+    # executed. Without sqlite3's bindings the server crashes at startup
+    # via `@cursor/sdk`. Build it directly with node-gyp here — `pnpm
+    # rebuild` runs silently no-op'd in this environment, so we go around it.
     #
-    # `prebuild-install` (sqlite3's fast path) needs network access for
-    # GitHub release downloads, so it always fails inside the Nix sandbox
-    # and falls back to `node-gyp rebuild` — that's what we want.
-    #
-    # The store-dir is pinned to what pnpmConfigHook set up, because pnpm
-    # rebuild otherwise picks the global default (~/.local/share/pnpm/store)
-    # and refuses to link against the existing node_modules.
-    storeDir="$(awk '/^storeDir:/ {print $2}' node_modules/.modules.yaml)"
-    for pkg in sqlite3 better-sqlite3 sharp; do
-      # `ls` is the most portable way to test "any file matches a glob"
-      # in plain sh — compgen is bash-only and the build runs under sh.
-      if ls -d node_modules/.pnpm/"$pkg"@* > /dev/null 2>&1; then
-        echo "Rebuilding native module: $pkg"
-        pnpm --store-dir "$storeDir" rebuild "$pkg"
+    # All three of these packages publish prebuilds, but those downloads
+    # need network access (and prebuilds for some of them link against
+    # glibc/musl differently than the sandbox provides). Compiling from the
+    # vendored C sources is fully offline and stable.
+    rebuild_node_module() {
+      local pkg="$1"
+      local pkg_dir
+      pkg_dir=$(echo node_modules/.pnpm/"$pkg"@*/node_modules/"$pkg")
+      if [ ! -d "$pkg_dir" ]; then
+        echo "skip $pkg (not installed)" >&2
+        return 0
       fi
-    done
+      echo "Building native module: $pkg ($pkg_dir)"
+      # Use the project-local node-gyp shipped by the package itself or by
+      # the workspace; the Nix sandbox PATH doesn't include node-gyp.
+      local gyp_rel
+      if [ -x "$pkg_dir/node_modules/.bin/node-gyp" ]; then
+        gyp_rel="node_modules/.bin/node-gyp"
+        ( cd "$pkg_dir" && ./"$gyp_rel" rebuild --release ) \
+          || { echo "ERROR: $pkg native build failed" >&2; exit 1; }
+      else
+        local gyp_abs="$PWD/node_modules/.bin/node-gyp"
+        if [ ! -x "$gyp_abs" ]; then
+          echo "ERROR: cannot find node-gyp for $pkg" >&2
+          exit 1
+        fi
+        ( cd "$pkg_dir" && "$gyp_abs" rebuild --release ) \
+          || { echo "ERROR: $pkg native build failed" >&2; exit 1; }
+      fi
+    }
+
+    rebuild_node_module sqlite3
+    rebuild_node_module better-sqlite3 || true   # only needed if used
+    # sharp uses its own libvips prebuild approach; skip — the published
+    # `@img/sharp-libvips-linux-*` packages already ship the right binary.
 
     pnpm --filter @paperclipai/ui build
     pnpm --filter @paperclipai/plugin-sdk build
@@ -183,6 +216,15 @@ stdenv.mkDerivation (finalAttrs: {
   # The server build re-runs typecheck implicitly; skip the heavy test
   # suite at package-build time. CI runs it separately.
   doCheck = false;
+
+  # Skip stdenv's strip/patchelf passes over node_modules. Native modules
+  # ship as pre-shipped .node files (sharp, sqlite3, esbuild, rollup, etc.)
+  # designed to be portable as-is; patchelf'ing them is both slow (many
+  # thousand files in a pnpm tree) and counter-productive — most are
+  # static-pie binaries that fail with `cannot find section '.dynamic'`.
+  # `autoPatchelfHook` is intentionally not in nativeBuildInputs.
+  dontStrip = true;
+  dontPatchELF = true;
 
   inherit meta;
 })
