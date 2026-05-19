@@ -1,7 +1,7 @@
 { lib
 , stdenv
 , nodejs_20
-, pnpm
+, pnpm_9
 , makeWrapper
 , cacert
 , # runtime PATH deps (kept in sync with Dockerfile)
@@ -19,10 +19,11 @@
 }:
 
 let
-  # `pkgs.pnpm` tracks the current pnpm major in nixpkgs. The workspace
-  # declares `packageManager: pnpm@9.15.4`; pnpm 9 and 10 are both compatible
-  # with this lockfile format. If a future nixpkgs bump breaks the build,
-  # pin to `pkgs.pnpm_9` explicitly in an override.
+  # Pin to pnpm 9 because the workspace declares `packageManager: pnpm@9.15.4`
+  # and writes `lockfileVersion: '9.0'`. Newer pnpm majors (10/11) reject
+  # this lockfile with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH because they expect
+  # the `overridesChecksum` field that pnpm 9 doesn't emit.
+  pnpm = pnpm_9;
 
   src = lib.cleanSourceWith {
     src = ../.;
@@ -89,10 +90,12 @@ stdenv.mkDerivation (finalAttrs: {
   #   - runs lifecycle scripts for native modules
   pnpmDeps = pnpm.fetchDeps {
     inherit (finalAttrs) pname version src;
-    # Initial placeholder hash — run `nix build` once and replace with the
-    # hash printed in the build failure. Re-run after any pnpm-lock.yaml
-    # change.
-    hash = lib.fakeHash;
+    # fetcherVersion 3 is the current pnpm fetcher (fetcherVersion 1/2 are
+    # deprecated and removed in 26.11). Works with pnpm 9 + lockfileVersion 9.0.
+    fetcherVersion = 3;
+    # Bumped whenever pnpm-lock.yaml changes — see doc/NIX.md
+    # "Updating dependency hashes".
+    hash = "sha256-37YTtHP7bOrfb7o+qx0FyLexS22mEDjqSI7Es2i1mPg=";
   };
 
   # The workspace declares pnpm@9.15.4 via packageManager; corepack would

@@ -25,6 +25,17 @@ Native modules (`better-sqlite3`, `sharp`) are rebuilt via `pnpm`'s
 post-install hooks during `pnpm.configHook`. No prebuilt-binary fetch at
 runtime.
 
+### Agent CLIs
+
+The optional `paperclip-agent-clis` derivation bundles `claude` (from
+`@anthropic-ai/claude-code`), `codex` (from `@openai/codex`), and
+`opencode` (from `opencode-ai`). Each upstream npm package is a thin
+dispatcher that downloads a platform-specific binary at install time;
+the Nix derivation skips the dispatcher and fetches the matching
+`linux-x64` / `linux-arm64` tarball directly. The wrapper PATH from
+`services.paperclip` picks them up automatically when
+`agentClis.enable = true`.
+
 ## Run standalone
 
 ```sh
@@ -139,12 +150,43 @@ verifies `/api/health` returns `{"status":"ok"}`.
 
 ## Updating dependency hashes
 
-Both `nix/package.nix` and `nix/agent-clis.nix` declare `lib.fakeHash` for
-their fixed-output fetches the first time they're added. To resolve:
+### After bumping `pnpm-lock.yaml`
 
-1. Run `nix build .#paperclip`. It fails with a hash mismatch.
-2. Replace the corresponding `fakeHash` with the printed `got:` value.
-3. Re-run. Repeat for `paperclip-agent-clis` if needed.
+The `pnpmDeps` hash in `nix/package.nix` invalidates. Resolve:
 
-Bumping `pnpm-lock.yaml` invalidates the package's `pnpmDeps` hash — same
-remedy.
+1. Set the `hash` for `pnpmDeps` back to `lib.fakeHash`.
+2. Run `nix build .#paperclip`. It fails with a hash mismatch.
+3. Replace `fakeHash` with the printed `got: sha256-…` value.
+4. Commit the bumped hash alongside the lockfile change.
+
+### After bumping an agent CLI
+
+`nix/agent-clis.nix` pins each CLI's per-architecture binary tarball with
+its SRI hash. To bump, e.g., `claude-code`:
+
+```sh
+# Set new version, then for each arch:
+nix-prefetch-url --type sha256 \
+  "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-<NEW>.tgz"
+nix hash to-sri --type sha256 <printed-base32-hash>
+```
+
+Repeat for `linux-arm64`. Update the two `hashes` entries. The binary
+layout inside the tarball is occasionally changed by upstream — if so,
+also update `binPath`. Confirm with:
+
+```sh
+NIXPKGS_ALLOW_UNFREE=1 nix build --impure .#paperclip-agent-clis
+./result/bin/claude --version
+```
+
+### About unfree
+
+Agent CLIs are proprietary. Either set `nixpkgs.config.allowUnfree = true`
+in your NixOS config, or pin a per-package allowlist:
+
+```nix
+nixpkgs.config.allowUnfreePredicate = pkg:
+  builtins.elem (pkg.pname or "")
+    [ "claude-code" "codex" "opencode" ];
+```

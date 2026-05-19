@@ -149,7 +149,7 @@ in
     };
 
     agentClis = {
-      enable = mkEnableOption "bundled agent CLIs (claude-code, codex, opencode-ai)";
+      enable = mkEnableOption "bundled agent CLIs (claude-code, codex, opencode)";
       package = mkOption {
         type = types.nullOr types.package;
         default = null;

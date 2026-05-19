@@ -7,7 +7,7 @@
 # Boots a NixOS VM with the paperclip module enabled against a locally
 # provisioned Postgres, waits for the unit to come up, and curls the health
 # endpoint documented at docs/deploy/tailscale-private-access.md:69-75.
-pkgs.nixosTest {
+pkgs.testers.nixosTest {
   name = "paperclip-basic";
 
   nodes.machine = { config, pkgs, lib, ... }: {

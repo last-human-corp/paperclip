@@ -25,7 +25,7 @@ nix flake check
 |------|---------|
 | `../flake.nix` | Flake entry; exposes packages, devShells, nixosModules, checks |
 | `package.nix` | `pkgs.paperclip` — source-built derivation of the pnpm workspace |
-| `agent-clis.nix` | `pkgs.paperclip-agent-clis` — bundle of claude-code/codex/opencode-ai |
+| `agent-clis.nix` | `pkgs.paperclip-agent-clis` — bundle of claude-code/codex/opencode |
 | `dev-shell.nix` | `nix develop` shell with all runtime deps |
 | `module.nix` | `nixosModules.paperclip` — systemd service + Postgres wiring |
 | `tests/basic.nix` | `nixosTest` that boots the module and probes `/api/health` |

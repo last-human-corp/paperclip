@@ -19,7 +19,7 @@
     {
       packages = forSystems supportedSystems ({ pkgs, system }: rec {
         paperclip = pkgs.callPackage ./nix/package.nix { };
-        paperclip-agent-clis = pkgs.callPackage ./nix/agent-clis.nix { };
+        paperclip-agent-clis = pkgs.callPackage ./nix/agent-clis.nix { inherit system; };
         default = paperclip;
       });
 

@@ -43,13 +43,30 @@ jobs:
       - name: nix version
         run: nix --version
 
-      # Structural validation only. `nix flake metadata` parses flake.nix and
-      # locks inputs in memory; it does NOT evaluate output derivations, so it
-      # works without resolved package/agent-cli hashes.
-      #
-      # Full evaluation and builds (`nix flake check`, `nix build .#paperclip`)
-      # require the `lib.fakeHash` placeholders in nix/package.nix and
-      # nix/agent-clis.nix to be replaced with real hashes. See
-      # doc/NIX.md "Updating dependency hashes" for the first-build flow.
-      - name: nix flake metadata
-        run: nix flake metadata --no-write-lock-file
+      # Evaluation-only validation: confirms flake.nix parses and every
+      # output (packages, devShells, modules, checks, formatter) evaluates
+      # cleanly for every advertised system. Does NOT trigger any builds —
+      # those happen in the `build` job below where fixed-output hashes
+      # come into play.
+      - name: nix flake show
+        run: nix flake show --all-systems
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Allow the package build to fail without blocking PRs while the
+    # pnpm-lock.yaml hash is being kept in sync. Remove `continue-on-error`
+    # once hash drift handling lands in CI (e.g. a `chore/refresh-nix-hashes`
+    # bot).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: nix build .#paperclip
+        run: nix build .#paperclip --print-build-logs
