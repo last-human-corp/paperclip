@@ -2,6 +2,8 @@
 , stdenv
 , nodejs_20
 , pnpm_9
+, fetchPnpmDeps
+, pnpmConfigHook
 , makeWrapper
 , cacert
 , # runtime PATH deps (kept in sync with Dockerfile)
@@ -74,7 +76,8 @@ stdenv.mkDerivation (finalAttrs: {
 
   nativeBuildInputs = [
     nodejs_20
-    pnpm.configHook
+    pnpm
+    (pnpmConfigHook.override { pnpm = pnpm_9; })
     makeWrapper
     cacert
     python3 # node-gyp for any native module rebuilds
@@ -84,12 +87,13 @@ stdenv.mkDerivation (finalAttrs: {
   # at install time. stdenv already provides gcc/make.
   buildInputs = [ ];
 
-  # pnpm.configHook does the heavy lifting:
+  # pnpmConfigHook does the heavy lifting:
   #   - resolves dependencies from `pnpmDeps` (offline fetch below)
   #   - honours `pnpm.patchedDependencies` and `pnpm.overrides` in package.json
   #   - runs lifecycle scripts for native modules
-  pnpmDeps = pnpm.fetchDeps {
+  pnpmDeps = fetchPnpmDeps {
     inherit (finalAttrs) pname version src;
+    pnpm = pnpm_9;
     # fetcherVersion 3 is the current pnpm fetcher (fetcherVersion 1/2 are
     # deprecated and removed in 26.11). Works with pnpm 9 + lockfileVersion 9.0.
     fetcherVersion = 3;
@@ -109,7 +113,29 @@ stdenv.mkDerivation (finalAttrs: {
   buildPhase = ''
     runHook preBuild
 
-    export HOME=$TMPDIR
+    # pnpmConfigHook runs `pnpm install --ignore-scripts` to keep the
+    # configure phase hermetic, so native-module install hooks (sqlite3,
+    # better-sqlite3, sharp) are never executed. Without those, sqlite3's
+    # node bindings are missing and the server crashes at startup via
+    # `@cursor/sdk`. Rebuild them here from source.
+    #
+    # `prebuild-install` (sqlite3's fast path) needs network access for
+    # GitHub release downloads, so it always fails inside the Nix sandbox
+    # and falls back to `node-gyp rebuild` — that's what we want.
+    #
+    # The store-dir is pinned to what pnpmConfigHook set up, because pnpm
+    # rebuild otherwise picks the global default (~/.local/share/pnpm/store)
+    # and refuses to link against the existing node_modules.
+    storeDir="$(awk '/^storeDir:/ {print $2}' node_modules/.modules.yaml)"
+    for pkg in sqlite3 better-sqlite3 sharp; do
+      # `ls` is the most portable way to test "any file matches a glob"
+      # in plain sh — compgen is bash-only and the build runs under sh.
+      if ls -d node_modules/.pnpm/"$pkg"@* > /dev/null 2>&1; then
+        echo "Rebuilding native module: $pkg"
+        pnpm --store-dir "$storeDir" rebuild "$pkg"
+      fi
+    done
+
     pnpm --filter @paperclipai/ui build
     pnpm --filter @paperclipai/plugin-sdk build
     pnpm --filter @paperclipai/server build
